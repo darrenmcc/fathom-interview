@@ -86,14 +86,7 @@ func (s *RTMPServer) Start() {
 			log.Println("error accepting connection:", err)
 			continue
 		}
-		s.mu.Lock()
-		if s.shuttingDown {
-			s.mu.Unlock()
-			conn.Close()
-			continue
-		}
-		s.connections.Add()
-		s.mu.Unlock()
+
 		go s.handleConnection(conn)
 	}
 }
@@ -109,6 +102,8 @@ func (s *RTMPServer) healthCheckHandler(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *RTMPServer) handleConnection(conn net.Conn) {
+	s.connections.Add()
+
 	defer s.connections.Done()
 	HandleStream(conn)
 	conn.Close()
@@ -136,19 +131,17 @@ func (s *RTMPServer) ReadyToShutdown() bool {
 }
 
 func main() {
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
-	server, err := NewRTMPServer(port)
+	tcpPort := "80"
+	server, err := NewRTMPServer(tcpPort)
 	if err != nil {
 		log.Fatal("failed to start RTMP server:", err)
 	}
 
 	go func() {
+		httpPort := "8080"
 		http.HandleFunc("/health", server.healthCheckHandler)
-		log.Println("HTTP server started on port")
-		if err := http.ListenAndServe(":"+port, nil); err != nil {
+		log.Println("HTTP server started on port", httpPort)
+		if err := http.ListenAndServe(":"+httpPort, nil); err != nil {
 			log.Fatalf("Error starting HTTP server: %v", err)
 		}
 	}()
