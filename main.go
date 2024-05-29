@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -97,6 +98,16 @@ func (s *RTMPServer) Start() {
 	}
 }
 
+func (s *RTMPServer) healthCheckHandler(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.shuttingDown {
+		http.Error(w, "shutting down", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
 func (s *RTMPServer) handleConnection(conn net.Conn) {
 	defer s.connections.Done()
 	HandleStream(conn)
@@ -133,6 +144,14 @@ func main() {
 	if err != nil {
 		log.Fatal("failed to start RTMP server:", err)
 	}
+
+	go func() {
+		http.HandleFunc("/health", server.healthCheckHandler)
+		log.Println("HTTP server started on port")
+		if err := http.ListenAndServe(":"+port, nil); err != nil {
+			log.Fatalf("Error starting HTTP server: %v", err)
+		}
+	}()
 
 	server.Start()
 
